@@ -1,135 +1,145 @@
-# 🧠 Java & Spring Boot で作る ChatGPT ストリーミングAPI
+# 🧠 AI Tutorial: Memory-Aware Chatbot with LangChain4j + Spring Boot
 
-このプロジェクトは、**OpenAI GPT API** を用いて、**リアルタイムでストリーミング応答を返す**チャット風のAPIを構築するSpring Bootアプリケーションです。
+このプロジェクトは、JavaとSpring Bootを使って、LangChain4jライブラリとOpenAI APIを活用した**メモリ対応チャットボット**を構築するデモアプリケーションです。
 
-本プロジェクトは、[AI with Java & Spring Boot – Part 2: Streaming ChatGPT Responses](https://dev.to/devkaykay/ai-with-java-spring-boot-part-2-streaming-chatgpt-responses-3l13) に基づいています。
+## 📚 シリーズの位置づけ
 
----
+本リポジトリは、以下の「AI with Java & Spring Boot」シリーズの **第3部** に対応しています：
 
-## 🚀 概要
-
-- OpenAI API（`stream=true`）を利用してチャンク単位でデータを受信
-- Spring WebFlux + WebClient による非同期処理
-- クライアントには Server-Sent Events (SSE) でリアルタイムに返却
-- `curl` や JavaScript からの接続が可能
+1. テキスト要約APIの構築（`part1-summarizeAPI`）
+2. ストリーミング対応のチャットAPI（`part2-streamingAPI`）
+3. ✅ メモリ対応チャットボット（本プロジェクト、`part3-memoryChat`）
 
 ---
 
-## 🧰 前提条件
+## 🛠 使用技術
 
-- Java 17 以上（推奨: Java 21）
-- Maven 3.8+
-- OpenAI API キー（https://platform.openai.com/ にて取得）
+* **LangChain4j**: JavaでLLMアプリケーションを構築するライブラリ
+* **Spring Boot 3.5.3**
+* **OpenAI GPT-3.5 Turbo API**
+* **セッションスコープでのメモリ保持**
 
 ---
 
-## ⚙️ セットアップ手順
+## 📦 依存関係（pom.xml）
 
-### 1. プロジェクトをクローン
-
-```bash
-git clone https://github.com/your-username/ai-tutorial.git
-cd ai-tutorial
+```xml
+<dependency>
+    <groupId>dev.langchain4j</groupId>
+    <artifactId>langchain4j</artifactId>
+    <version>1.1.0</version>
+</dependency>
+<dependency>
+    <groupId>dev.langchain4j</groupId>
+    <artifactId>langchain4j-open-ai</artifactId>
+    <version>1.1.0</version>
+</dependency>
 ```
 
-### 2. OpenAI APIキーの設定
+---
 
-以下のいずれかで設定します。
-
-#### 方法①: 環境変数で設定
-
-```bash
-export OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-#### 方法②: `application.yaml` を編集
+## ⚙️ 設定（`application.yaml`）
 
 ```yaml
 openai:
-  api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  api-key: ${OPENAI_API_KEY}
   model: gpt-3.5-turbo
   temperature: 0.7
   max-tokens: 1000
 ```
 
-### 3. 起動
+`.env` などで `OPENAI_API_KEY` を環境変数として設定してください。
+
+---
+
+## 🧠 メモリ対応チャットサービス
+
+```java
+@Component
+@Scope("session") // セッション単位のメモリを維持
+public class MemoryChatService {
+
+    private final ChatLanguageModel model;
+    private final ChatMemory memory;
+
+    public MemoryChatService(@Value("${openai.api-key}") String apiKey) {
+        this.model = OpenAiChatModel.builder()
+            .apiKey(apiKey)
+            .modelName("gpt-3.5-turbo")
+            .temperature(0.7)
+            .build();
+        this.memory = MessageWindowChatMemory.withMaxMessages(10);
+    }
+
+    public String chat(String userInput) {
+        return model.generate(userInput, memory).content();
+    }
+}
+```
+
+---
+
+## 🌐 RESTエンドポイント
+
+```java
+@RestController
+@RequestMapping("/api/langchain")
+@SessionAttributes("memoryChatService")
+public class LangChainController {
+
+    private final MemoryChatService memoryChatService;
+
+    public LangChainController(MemoryChatService memoryChatService) {
+        this.memoryChatService = memoryChatService;
+    }
+
+    @PostMapping("/chat")
+    public ResponseEntity<String> chat(@RequestBody Map<String, String> request) {
+        String prompt = request.get("prompt");
+        String response = memoryChatService.chat(prompt);
+        return ResponseEntity.ok(response);
+    }
+}
+```
+
+---
+
+## 🚀 実行方法
 
 ```bash
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
 
 ---
 
-## 🔍 API エンドポイント
+## 💬 テスト方法
 
-### 📨 ストリーミングチャット応答
-
-```
-GET /api/ai/chat-stream?prompt=こんにちは、面白いジョークを教えて
-```
-
-- クエリパラメータ: `prompt` に対話内容を指定
-- レスポンス形式: `text/event-stream`（SSE）
-
----
-
-## 🧪 実行例
-
-### curl を使う場合
+以下のように `curl` コマンドでチャットを行います：
 
 ```bash
-curl http://localhost:8080/api/ai/chat-stream?prompt=面白いジョークを教えて
+curl -X POST http://localhost:8080/api/langchain/chat \
+-H "Content-Type: application/json" \
+-d '{"prompt": "Who is the CEO of Tesla?"}'
+
+curl -X POST http://localhost:8080/api/langchain/chat \
+-H "Content-Type: application/json" \
+-d '{"prompt": "Where was he born?"}'
 ```
 
-### JavaScript (SSE クライアント)
-
-```javascript
-const evtSource = new EventSource("/api/ai/chat-stream?prompt=Tell me a joke");
-
-evtSource.onmessage = function(event) {
-    console.log("🧠", event.data);
-    // 画面に出力するなどの処理
-};
-```
+Botが「he = Elon Musk」と記憶して答えてくれるはずです。
 
 ---
 
-## 🧩 プロジェクト構成
+## 🏷 タグ履歴
 
-```text
-src
-├── main
-│   ├── java/com/sample
-│   │   ├── AiTutorialApplication.java      # アプリ起動クラス
-│   │   ├── controller
-│   │   │   ├── AIController.java           # テキスト要約API（Part 1）
-│   │   │   └── AIStreamController.java     # SSEストリーミングAPI（Part 2）
-│   │   └── service
-│   │       └── OpenAIService.java          # OpenAI APIとのやり取り
-│   └── resources
-│       └── application.yaml                # 設定ファイル
-```
+* `part1-summarizeAPI`: テキスト要約API
+* `part2-streamingAPI`: ストリーミングチャットAPI
+* `part3-memoryChat`: メモリ対応チャットボット（本ブランチ）
 
 ---
 
-## 📦 使用技術・ライブラリ
+## 📄 ライセンス
 
-| ライブラリ名                     | 説明                                       |
-|----------------------------------|--------------------------------------------|
-| `spring-boot-starter-webflux`    | WebClientとFluxによる非同期通信            |
-| `jackson-databind`               | JSONのパース処理（OpenAI応答処理に使用）   |
-| `spring-boot-starter-web`        | REST APIベースの基本機能                   |
+このプロジェクトは学習目的で提供されており、商用利用はご自身でご判断ください。
 
 ---
-
-## 📖 関連リンク
-
-- 🔗 [Part 2: Streaming ChatGPT Responses（英語記事）](https://dev.to/devkaykay/ai-with-java-spring-boot-part-2-streaming-chatgpt-responses-3l13)
-- 🔗 [OpenAI API ドキュメント](https://platform.openai.com/docs/guides/gpt)
-- 🔗 [Spring WebFlux ドキュメント](https://docs.spring.io/spring-framework/docs/current/reference/html/web-reactive.html)
-
----
-
-## 📝 ライセンス
-
-このプロジェクトは学習・検証用途向けに公開されています。
