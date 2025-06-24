@@ -1,139 +1,102 @@
-# 📄 PDF Q\&A Bot with LangChain4j & Spring Boot
+# 🧠 AI Agent with Java & Spring Boot (LangChain4j 1.1.0)
 
-このプロジェクトは、PDFファイルをアップロードして内容に関する質問を投げかけ、AI が文脈に基づいて回答を返す Q\&A システムです。LangChain4j、Spring Boot、OpenAI Embedding API を活用しています。
+LangChain4j を使って、Java + Spring Boot アプリに AI Agent 機能を追加します。自然言語プロンプトを解析し、Javaメソッド（ツール）を呼び出して応答を生成します。
 
-## 🧠 主な機能
+## 📦 機能概要
 
-* PDFファイルのアップロードと解析
-* 文書の分割と OpenAI による埋め込み（text-embedding-ada-002 使用）
-* インメモリベクトルストアへの保存
-* gpt-3.5-turbo によるコンテキストに基づいた自然言語応答
+このプロジェクトでは、以下のようなプロンプトを受け取り…
 
----
+> "What’s 25% of 160 if it’s sunny in Tokyo?"
 
-## ⚙️ 使用技術
+AIが以下を実行します：
 
-| 項目          | 内容                                       |
-| ----------- | ---------------------------------------- |
-| Java        | 21                                       |
-| Spring Boot | 3.3.x（Spring Web）                        |
-| LangChain4j | 1.1.0-beta7（`easy-rag`, `pdfbox-parser`） |
-| OpenAI      | Embedding + Chat Completion API          |
-| PDF解析       | Apache PDFBox v3.x                       |
-| ベクトルストア     | InMemoryEmbeddingStore（LangChain4j 提供）   |
+* `WeatherTool.getCurrentWeather("Tokyo")` を呼び出す
+* `CalculatorTool.calculatePercentage("25% of 160")` を呼び出す
+* 結果を自然言語でまとめて返答
 
----
+## ⚙️ 前提条件
 
-## 📦 Maven 依存関係（抜粋）
+* Java 21+
+* Spring Boot 3.5+
+* OpenAI API キー（`.env` または `application.yaml` に設定）
+
+## 🗂️ ディレクトリ構成
+
+```
+src/main/java/com/sample/ai_tutorial/
+├── AiTutorialApplication.java                 // Spring Boot アプリ起動クラス
+├── controller/
+│   └── AgentController.java                   // RESTエンドポイント (/api/agent/ask)
+├── service/
+│   ├── ReasoningAgent.java                    // Agent初期化・実行
+│   └── ToolAgent.java                         // LangChain4j Agent定義
+└── tools/
+    ├── CalculatorTool.java                    // "25% of 160" のような計算処理
+    └── WeatherTool.java                       // モック天気API (都市名を元に返答)
+```
+
+## 🛠️ 依存ライブラリ（`pom.xml` 抜粋）
 
 ```xml
-<!-- LangChain4j Easy RAG -->
 <dependency>
-  <groupId>dev.langchain4j</groupId>
-  <artifactId>langchain4j-easy-rag</artifactId>
-  <version>1.1.0-beta7</version>
+    <groupId>dev.langchain4j</groupId>
+    <artifactId>langchain4j</artifactId>
+    <version>1.1.0</version>
 </dependency>
-
-<!-- PDFBox ドキュメントパーサー -->
 <dependency>
-  <groupId>dev.langchain4j</groupId>
-  <artifactId>langchain4j-document-parser-apache-pdfbox</artifactId>
-  <version>1.1.0-beta7</version>
-</dependency>
-
-<!-- OpenAI API -->
-<dependency>
-  <groupId>dev.langchain4j</groupId>
-  <artifactId>langchain4j-open-ai</artifactId>
-  <version>1.1.0</version>
+    <groupId>dev.langchain4j</groupId>
+    <artifactId>langchain4j-open-ai</artifactId>
+    <version>1.1.0</version>
 </dependency>
 ```
 
----
+※ `langchain4j-easy-rag` も含まれていますが、このプロジェクトでは未使用です。
 
 ## 🚀 実行方法
 
-### 1. PDFをアップロードしてインデックス化
+1. OpenAI APIキーを `application.yaml` に設定：
 
-```bash
-curl -X POST -F 'file=@camel4.pdf' http://localhost:8080/api/pdf/upload
+```yaml
+openai:
+  api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-### 2. 質問を投げる
+2. アプリ起動：
 
 ```bash
-curl -X POST http://localhost:8080/api/pdf/ask \
+./mvnw spring-boot:run
+```
+
+## 🌐 API 実行例
+
+```bash
+curl -X POST http://localhost:8080/api/agent/ask \
   -H "Content-Type: application/json" \
-  -d '{"question": "このドキュメントの目的は何ですか？"}'
+  -d '{"prompt": "If it is sunny in Tokyo, what is 25% of 160?"}'
 ```
 
----
+出力例：
 
-## 📁 エンドポイント一覧
+```
+It is sunny in Tokyo. 
 
-| メソッド | パス                | 機能                  |
-| ---- | ----------------- | ------------------- |
-| POST | `/api/pdf/upload` | PDFファイルのアップロードおよび解析 |
-| POST | `/api/pdf/ask`    | 質問を投げてAIの回答を取得      |
-
----
-
-## 🛠 実装の構成（概要）
-
-### コントローラー
-
-```java
-@RestController
-@RequestMapping("/api/pdf")
-public class PdfQaController {
-
-    @PostMapping("/upload")
-    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file) { ... }
-
-    @PostMapping("/ask")
-    public ResponseEntity<String> ask(@RequestBody Map<String, String> body) { ... }
-}
+25% of 160 is 40.
 ```
 
-### サービス
+## 🔍 動作確認のポイント
 
-```java
-public class PdfQaService {
+* `ToolAgent` では、LangChain4j の `@Tool` アノテーションにより、AIがJavaメソッドを呼び出せるようになっています。
+* `ToolAgent.class` は `@ToolSpecificationExtractor` を使って LangChain4j にツール仕様を登録します。
+* LLM が `tools:` に対して適切なメソッド呼び出しを構築し、それが `ToolExecutor` を通じて呼び出されます。
 
-    private final RetrievalAugmentedGeneration rag;
+## 🛡️ 応用と発展
 
-    public PdfQaService() {
-        this.rag = RetrievalAugmentedGeneration.builder()
-            .documentParser(new ApachePdfBoxDocumentParser())
-            .embeddingModel(OpenAiEmbeddingModel.builder()
-                .apiKey(System.getenv("OPENAI_API_KEY"))
-                .modelName("text-embedding-ada-002")
-                .build())
-            .chatLanguageModel(OpenAiChatModel.builder()
-                .apiKey(System.getenv("OPENAI_API_KEY"))
-                .modelName("gpt-3.5-turbo")
-                .build())
-            .build();
-    }
+* 実天気API（OpenWeatherなど）に差し替え可能
+* 通貨換算・翻訳・金融計算などのツールを追加して拡張可能
+* LangChain4j AgentExecutor による推論ログ出力・分岐制御も可能
 
-    public void index(MultipartFile file) { ... }
+## 🧠 学べること
 
-    public String ask(String question) { ... }
-}
-```
-
----
-
-## ✅ 注意点
-
-* OpenAI の APIキーは **環境変数 `OPENAI_API_KEY`** に設定してください。
-* Apache PDFBox は **v3系** を使用してください（`PDDocument.load(InputStream)` の互換性に注意）。
-* 実運用では、ファイル永続化・認証・ログ出力等の拡張が必要です。
-
----
-
-## 📚 参考元
-
-* LangChain4j公式: [https://docs.langchain4j.dev/](https://docs.langchain4j.dev/)
-* OpenAI Embeddings: [https://platform.openai.com/docs/guides/embeddings](https://platform.openai.com/docs/guides/embeddings)
-* 記事: "AI with Java & Spring Boot – Part 4"（内容を `1.1.0-beta7` に更新）
+* LangChain4j v1.1.0 の最新APIを使ったエージェント構築法
+* JavaからLLMを使った自然言語インターフェースの設計
+* Spring Bootと統合したAI APIの構築手法
